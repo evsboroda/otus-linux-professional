@@ -130,6 +130,7 @@ Consistency Policy : resync
 #### Сломаем и починим RAID
 
 Выключим ВМ и удалим один диск из настроек ВМ в VMWare.
+
 ![remove_disk.jpg](remove_disk.jpg)
 
 После загрузки ВМ проверим состояние RAID.
