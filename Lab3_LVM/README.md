@@ -234,5 +234,99 @@ root@ubuntu-srv01:~# vgs
 ```
 - Видим что диск добавился и наша Volume Group увеличилась и её размер теперь *sdb+sdc=12G*
 
+Примонтируем LV test в директорию `/data` сымитируем занятое место с помощью команды dd записав 0 в файл `test.log`
+```
+root@ubuntu-srv01:~# dd if=/dev/zero of=/data/test.log bs=1M count=8000 status=progress
+7947157504 bytes (7.9 GB, 7.4 GiB) copied, 11 s, 722 MB/s
+dd: error writing '/data/test.log': No space left on device
+7944+0 records in
+7943+0 records out
+8328839168 bytes (8.3 GB, 7.8 GiB) copied, 12.0989 s, 688 MB/s
+```
+Проверим занятое место.
+```
+root@ubuntu-srv01:~# df -hT
+Filesystem                        Type   Size  Used Avail Use% Mounted on
+tmpfs                             tmpfs  387M  1.6M  385M   1% /run
+/dev/mapper/ubuntu--vg-ubuntu--lv ext4   9.8G  3.4G  6.0G  36% /
+tmpfs                             tmpfs  1.9G     0  1.9G   0% /dev/shm
+tmpfs                             tmpfs  5.0M     0  5.0M   0% /run/lock
+/dev/mapper/lab3-test             ext4   7.8G  7.8G     0 100% /data
+/dev/sda2                         ext4   1.8G  207M  1.5G  13% /boot
+tmpfs                             tmpfs  387M   12K  387M   1% /run/user/1000
+```
+Видим, что наш раздел `/dev/mapper/lab3-test` занят на 100%.
+
+Увеличим раздел засчёт добавленого диска sdc в Volume Group.
+```
+root@ubuntu-srv01:~# lvextend -l+80%FREE /dev/lab3/test
+  Size of logical volume lab3/test changed from <8.00 GiB (2047 extents) to <11.12 GiB (2846 extents).
+  Logical volume lab3/test successfully resized.
+```
+Проверим
+```
+root@ubuntu-srv01:~# lvs /dev/lab3/test
+  LV   VG   Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  test lab3 -wi-ao---- <11.12g
+  ```
+Проверим ФС.
+```
+root@ubuntu-srv01:~# df /dev/mapper/lab3-test -hT
+Filesystem            Type  Size  Used Avail Use% Mounted on
+/dev/mapper/lab3-test ext4  7.8G  7.8G     0 100% /data
+```
+Размер ФС не изменился, необходимо сделать `resize`.
+```
+root@ubuntu-srv01:~# resize2fs /dev/lab3/test
+resize2fs 1.47.0 (5-Feb-2023)
+Filesystem at /dev/lab3/test is mounted on /data; on-line resizing required
+old_desc_blocks = 1, new_desc_blocks = 2
+The filesystem on /dev/lab3/test is now 2914304 (4k) blocks long.
+```
+Проверим:
+```
+root@ubuntu-srv01:~# df /dev/mapper/lab3-test -hT
+Filesystem            Type  Size  Used Avail Use% Mounted on
+/dev/mapper/lab3-test ext4   11G  7.8G  2.6G  76% /data
+```
+Место увеличилось.
+
+Теперь проведём обратную процедуру уменьшив существующий LV с помощью команды `lvreduce`, но перед этим необходимо отмонтировать файловую систему, проверить её на ошибки и уменьшить ее размер:
+- отмонтируем
+```
+root@ubuntu-srv01:~# umount /data
+```
+- уменьшаем ФС
+```
+root@ubuntu-srv01:~# e2fsck -fy /dev/lab3/test
+e2fsck 1.47.0 (5-Feb-2023)
+Pass 1: Checking inodes, blocks, and sizes
+Pass 2: Checking directory structure
+Pass 3: Checking directory connectivity
+Pass 4: Checking reference counts
+Pass 5: Checking group summary information
+/dev/lab3/test: 12/729088 files (0.0% non-contiguous), 2105795/2914304 blocks
+```
+- уменьшаем LV
+```
+root@ubuntu-srv01:~# lvreduce /dev/lab3/test -L 10G
+  WARNING: Reducing active logical volume to 10.00 GiB.
+  THIS MAY DESTROY YOUR DATA (filesystem etc.)
+Do you really want to reduce lab3/test? [y/n]: y
+  Size of logical volume lab3/test changed from <11.12 GiB (2846 extents) to 10.00 GiB (2560 extents).
+  Logical volume lab3/test successfully resized.
+```
+- проверяем
+```
+root@ubuntu-srv01:~# df -hT /dev/mapper/lab3-test
+Filesystem            Type  Size  Used Avail Use% Mounted on
+/dev/mapper/lab3-test ext4  9.8G  7.8G  1.6G  84% /data
+```
+```
+root@ubuntu-srv01:~# lvs /dev/lab3/test
+  LV   VG   Attr       LSize  Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  test lab3 -wi-ao---- 10.00g
+```
+
 
 
